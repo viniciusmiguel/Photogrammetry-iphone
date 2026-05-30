@@ -1,4 +1,5 @@
 import ARKit
+import RealityKit
 import SwiftUI
 
 /// Space/room scan screen: live LiDAR mesh via `ARView`, stats overlay, and a

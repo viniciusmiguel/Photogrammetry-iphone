@@ -34,6 +34,8 @@ targets:
         NSCameraUsageDescription: >-
           The camera is used to photograph objects and spaces for on-device 3D
           reconstruction.
+    entitlements:
+      path: Photogrammetry/Resources/Photogrammetry.entitlements
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"

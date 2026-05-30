@@ -75,9 +75,8 @@ private extension ReconstructionDetail {
     var sessionDetail: PhotogrammetrySession.Request.Detail {
         switch self {
         case .reduced: return .reduced
-        case .medium: return .medium
-        case .full: return .full
-        case .raw: return .raw
+        // iOS only ships .preview and .reduced; cap higher-quality requests at .reduced.
+        case .medium, .full, .raw: return .reduced
         }
     }
 }
