@@ -1,0 +1,48 @@
+# XcodeGen spec — run `xcodegen generate` in this directory to produce
+# Photogrammetry.xcodeproj, then open it in Xcode 15+.
+#
+# Why XcodeGen: keeps project config as reviewable text (per CLAUDE.md), avoids
+# hand-maintaining a fragile .pbxproj.
+
+name: Photogrammetry
+options:
+  bundleIdPrefix: com.example.photogrammetry
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+
+targets:
+  Photogrammetry:
+    type: application
+    platform: iOS
+    sources:
+      - path: Photogrammetry
+    info:
+      path: Photogrammetry/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Photogrammetry
+        UILaunchScreen: {}
+        # LiDAR-only experience; advertise the requirement to the App Store.
+        UIRequiredDeviceCapabilities:
+          - arkit
+        NSCameraUsageDescription: >-
+          The camera is used to photograph objects and spaces for on-device 3D
+          reconstruction.
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+
+  PhotogrammetryTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PhotogrammetryTests
+    dependencies:
+      - target: Photogrammetry
