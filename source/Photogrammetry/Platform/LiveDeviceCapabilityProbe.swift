@@ -12,7 +12,13 @@ struct LiveDeviceCapabilityProbe: DeviceCapabilityProbe {
     }
 
     var supportsObjectCapture: Bool {
+        // ObjectCaptureSession is absent from the iOS simulator SDK; it
+        // requires the physical camera stack only present on real hardware.
+        #if !targetEnvironment(simulator)
         ObjectCaptureSession.isSupported
+        #else
+        false
+        #endif
     }
 
     var supportsSceneReconstruction: Bool {

@@ -1,3 +1,4 @@
+#if !targetEnvironment(simulator)
 import Foundation
 import Observation
 import RealityKit
@@ -110,3 +111,38 @@ final class ObjectCaptureScanner: ObjectScanning {
         }
     }
 }
+
+#else
+
+import Foundation
+import Observation
+
+/// Simulator stub — `ObjectCaptureSession` requires physical device hardware
+/// and is absent from the iOS simulator SDK. This stub satisfies `ObjectScanning`
+/// so the rest of the app compiles; capture is simply a no-op.
+@MainActor
+final class ObjectCaptureScanner: ObjectScanning {
+    let states: AsyncStream<ObjectScanState>
+    private var continuation: AsyncStream<ObjectScanState>.Continuation?
+
+    init() {
+        var c: AsyncStream<ObjectScanState>.Continuation!
+        states = AsyncStream { c = $0 }
+        continuation = c
+    }
+
+    func start(into store: ObjectCaptureStore) throws {}
+    func beginCapturing() {}
+
+    func finish() {
+        continuation?.finish()
+        continuation = nil
+    }
+
+    func cancel() {
+        continuation?.finish()
+        continuation = nil
+    }
+}
+
+#endif

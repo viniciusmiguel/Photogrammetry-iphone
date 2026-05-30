@@ -19,19 +19,34 @@ struct ObjectCaptureFlowView: View {
             if let reconstructionVM {
                 ReconstructionProgressView(viewModel: reconstructionVM)
             } else if let captureVM {
-                ObjectCaptureContainer(
-                    session: scanner.session,
-                    scanState: captureVM.scanState,
-                    onConfirmBox: captureVM.confirmBoundingBox,
-                    onFinish: captureVM.finish)
-                .onChange(of: captureVM.imagesFolderForReconstruction) {
-                    startReconstructionIfReady()
-                }
+                captureContent(viewModel: captureVM)
             } else {
                 ProgressView().onAppear(perform: beginCapture)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Wraps `ObjectCaptureContainer` behind a `#if` so this view compiles in
+    /// the simulator even though `ObjectCaptureSession` is unavailable there.
+    @ViewBuilder
+    private func captureContent(viewModel: ObjectCaptureViewModel) -> some View {
+        #if !targetEnvironment(simulator)
+        ObjectCaptureContainer(
+            session: scanner.session,
+            scanState: viewModel.scanState,
+            onConfirmBox: viewModel.confirmBoundingBox,
+            onFinish: viewModel.finish)
+        .onChange(of: viewModel.imagesFolderForReconstruction) {
+            startReconstructionIfReady()
+        }
+        #else
+        ContentUnavailableView(
+            "Simulator Unsupported",
+            systemImage: "camera.slash",
+            description: Text(
+                "Object Capture requires a physical iPhone with a LiDAR camera."))
+        #endif
     }
 
     private func beginCapture() {

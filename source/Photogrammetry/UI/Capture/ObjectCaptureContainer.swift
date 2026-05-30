@@ -1,6 +1,10 @@
 import RealityKit
 import SwiftUI
 
+// ObjectCaptureSession and ObjectCaptureView are absent from the iOS simulator
+// SDK; the entire container is excluded from simulator builds.
+#if !targetEnvironment(simulator)
+
 /// Embeds Apple's `ObjectCaptureView` (live camera + point-cloud + bounding box)
 /// and layers our custom coverage overlay and stage-specific controls on top —
 /// keeping Apple's reconstruction guidance while delivering the custom UX.
@@ -43,3 +47,5 @@ struct ObjectCaptureContainer: View {
         }
     }
 }
+
+#endif
