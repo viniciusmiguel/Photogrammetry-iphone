@@ -2,6 +2,11 @@
 import Foundation
 import Observation
 import RealityKit
+// ObjectCaptureSession/ObjectCaptureView live in the `_RealityKit_SwiftUI`
+// cross-import overlay, which the compiler only loads when BOTH RealityKit and
+// SwiftUI are imported. Without this, the symbols are "not in scope" even though
+// RealityKit is imported (iOS 26.2 SDK).
+import SwiftUI
 
 /// Production `ObjectScanning` backed by `RealityKit.ObjectCaptureSession`.
 ///

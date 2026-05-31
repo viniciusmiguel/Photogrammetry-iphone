@@ -11,6 +11,8 @@ struct AppDependencies {
     let reconstructor: ModelReconstructing
     let meshExporter: MeshExporting
     let library: ScanLibrary
+    let uploadService: ScanUploadService
+    let settingsStore: ServerSettingsStore
 
     static func live() -> AppDependencies {
         AppDependencies(
@@ -18,7 +20,9 @@ struct AppDependencies {
                 probe: LiveDeviceCapabilityProbe()),
             reconstructor: PhotogrammetryReconstructor(),
             meshExporter: ModelIOMeshExporter(),
-            library: ScanLibrary(root: AppDependencies.documentsRoot()))
+            library: ScanLibrary(root: AppDependencies.documentsRoot()),
+            uploadService: HTTPScanUploadService(),
+            settingsStore: ServerSettingsStore())
     }
 
     private static func documentsRoot() -> URL {

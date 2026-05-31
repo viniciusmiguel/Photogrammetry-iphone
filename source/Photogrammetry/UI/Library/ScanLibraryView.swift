@@ -29,7 +29,7 @@ struct ScanLibraryView: View {
         } else {
             List(fileURLs, id: \.self) { url in
                 NavigationLink(url.lastPathComponent) {
-                    QuickLookPreview(url: url).ignoresSafeArea()
+                    ModelPreview(url: url)
                 }
             }
         }

@@ -34,10 +34,22 @@ targets:
         NSCameraUsageDescription: >-
           The camera is used to photograph objects and spaces for on-device 3D
           reconstruction.
+        # Scans upload to a user-specified server on the local network over
+        # plain HTTP (ADR-0009). NSAllowsLocalNetworking exempts local-network
+        # hosts — including private-range IP literals like 192.168.x.x — from
+        # ATS without disabling it globally.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # iOS 14+ prompts before joining the local network; describe why.
+        NSLocalNetworkUsageDescription: >-
+          Scans are uploaded to a photogrammetry server on your local network
+          for processing.
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
+        DEVELOPMENT_TEAM: PXZ27ABCDA
+        CODE_SIGN_STYLE: Automatic
 
   PhotogrammetryTests:
     type: bundle.unit-test
@@ -46,3 +58,6 @@ targets:
       - path: PhotogrammetryTests
     dependencies:
       - target: Photogrammetry
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

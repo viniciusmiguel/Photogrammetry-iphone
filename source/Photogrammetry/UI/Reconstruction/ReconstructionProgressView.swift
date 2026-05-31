@@ -1,4 +1,5 @@
 import QuickLook
+import SceneKit
 import SwiftUI
 
 /// Shows reconstruction progress and, on success, a QuickLook preview of the
@@ -27,6 +28,37 @@ struct ReconstructionProgressView: View {
                 description: Text(reason))
         }
     }
+}
+
+/// Routes to the right 3D viewer based on file extension.
+/// USDZ/Reality → QuickLook; OBJ → SceneKit (QL shows nothing for OBJ).
+struct ModelPreview: View {
+    let url: URL
+
+    var body: some View {
+        switch url.pathExtension.lowercased() {
+        case "obj":
+            SceneKitPreview(url: url).ignoresSafeArea()
+        default:
+            QuickLookPreview(url: url).ignoresSafeArea()
+        }
+    }
+}
+
+/// Interactive 3D viewer for OBJ (and other SceneKit-supported formats).
+struct SceneKitPreview: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> SCNView {
+        let view = SCNView()
+        view.autoenablesDefaultLighting = true
+        view.allowsCameraControl = true
+        view.backgroundColor = UIColor.systemBackground
+        view.scene = try? SCNScene(url: url, options: nil)
+        return view
+    }
+
+    func updateUIView(_: SCNView, context: Context) {}
 }
 
 /// Minimal `QLPreviewController` bridge for USDZ/OBJ preview.

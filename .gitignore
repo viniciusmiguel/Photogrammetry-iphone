@@ -60,3 +60,10 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+*.log
+
+# Local agent state / OS / generated project
+.DS_Store
+**/.DS_Store
+.claude/
+/source/Photogrammetry.xcodeproj/

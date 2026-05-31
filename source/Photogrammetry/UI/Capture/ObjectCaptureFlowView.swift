@@ -10,13 +10,16 @@ struct ObjectCaptureFlowView: View {
     @State private var scanner = ObjectCaptureScanner()
     @State private var captureVM: ObjectCaptureViewModel?
     @State private var reconstructionVM: ReconstructionViewModel?
+    @State private var uploadVM: UploadViewModel?
     @State private var store = ObjectCaptureStore(
         root: ObjectCaptureFlowView.captureRoot(), id: UUID())
     @State private var detail: ReconstructionDetail = .medium
 
     var body: some View {
         Group {
-            if let reconstructionVM {
+            if let uploadVM {
+                UploadProgressView(viewModel: uploadVM)
+            } else if let reconstructionVM {
                 ReconstructionProgressView(viewModel: reconstructionVM)
             } else if let captureVM {
                 captureContent(viewModel: captureVM)
@@ -55,18 +58,26 @@ struct ObjectCaptureFlowView: View {
         captureVM = viewModel
     }
 
+    /// Routes to the server upload or the on-device reconstruction based on the
+    /// server configuration (ADR-0009).
     private func startReconstructionIfReady() {
         guard let folder = captureVM?.imagesFolderForReconstruction else {
             return
         }
-        let viewModel = ReconstructionViewModel(
-            reconstructor: dependencies.reconstructor,
-            library: dependencies.library)
-        viewModel.run(
-            imagesFolder: folder, detail: detail,
-            outputURL: store.modelOutputURL,
-            displayName: "Object \(Date.now.formatted(date: .abbreviated, time: .shortened))")
-        reconstructionVM = viewModel
+        if let serverURL = dependencies.settingsStore.settings.baseURL {
+            let viewModel = UploadViewModel(uploadService: dependencies.uploadService)
+            viewModel.run(imagesFolder: folder, serverURL: serverURL)
+            uploadVM = viewModel
+        } else {
+            let viewModel = ReconstructionViewModel(
+                reconstructor: dependencies.reconstructor,
+                library: dependencies.library)
+            viewModel.run(
+                imagesFolder: folder, detail: detail,
+                outputURL: store.modelOutputURL,
+                displayName: "Object \(Date.now.formatted(date: .abbreviated, time: .shortened))")
+            reconstructionVM = viewModel
+        }
     }
 
     /// Per-capture scratch space under Caches (safe to be purged after export).

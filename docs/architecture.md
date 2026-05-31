@@ -5,9 +5,9 @@ behind it. It complements [`decision-log.md`](decision-log.md) (high-level ADRs)
 and the approved plan. Read this to understand *why each file exists* before
 changing it.
 
-> Status: greenfield scaffold. All Apple-framework wrappers are written against
-> the documented SDK but **not yet compiled** (developed on Linux without Xcode —
-> see [README](../README.md)). Pure-logic modules are unit-tested.
+> Status: first working build. Space-scan pipeline is functional on device:
+> LiDAR mesh + keyframe-baked UV texture exported as OBJ+MTL+PNG, previewed in
+> SceneKit. Object-capture pipeline compiles; on-device validation pending.
 
 ---
 
@@ -41,17 +41,23 @@ input*. Required outputs: textured mesh (USDZ/OBJ), raw LiDAR mesh, point cloud
  OBJECT MODE                              SPACE MODE
  ObjectCaptureScanner                     ARSceneScanner
    (ObjectCaptureSession)                   (ARKit .mesh + .sceneDepth)
-   → images+depth+gravity folder            → ARMeshAnchors + depth frames
+   → images+depth+gravity folder            → ARMeshAnchors + CameraKeyframes
         │                                        │
         ▼                                        ▼
- PhotogrammetryReconstructor              MeshBuilder (ARMesh→MDLMesh→USDZ)
-   (PhotogrammetrySession → USDZ)         DepthFrameSampler→PLYPointCloudExporter
+ PhotogrammetryReconstructor              MeshBuilder  (exploded vertices)
+   (PhotogrammetrySession → USDZ)           │
+                                          UVAtlasPacker (per-face atlas cells)
+                                            │
+                                          TextureBaker  (project keyframes → PNG)
+                                            │
+                                          OBJ + MTL + PNG
+                                          DepthFrameSampler → PLYPointCloudExporter
         │                                        │
         └──────────────┬─────────────────────────┘
                        ▼
-            ScanLibrary (adopt file → ScanArtifact)
+            ScanLibrary (adopt OBJ + companions → ScanArtifact)
                        ▼
-            UI: QuickLook preview + share/export (USDZ/OBJ/PLY)
+            SceneKitPreview (OBJ) / QuickLookPreview (USDZ)
 ```
 
 ## 4. Module-by-module: what & why
@@ -80,8 +86,9 @@ input*. Required outputs: textured mesh (USDZ/OBJ), raw LiDAR mesh, point cloud
 | File | What | Why |
 |---|---|---|
 | `SpaceScanning.swift` | `@MainActor` protocol + `SpaceScanState` | Same testability seam for the room pipeline. |
-| `ARSceneScanner.swift` | Wraps an ARKit session | Collects/dedupes `ARMeshAnchor`s and fuses depth. **Does not own the `ARSession`** — only one may run at a time and `ARView.session` is read-only, so it attaches as delegate to the preview view's session. |
-| `DepthDeprojection.swift` | Pure pinhole back-projection | The geometry most likely to be wrong (intrinsics, the ARKit −Z convention). Pulled out as a pure function and unit-tested. |
+| `ARSceneScanner.swift` | Wraps an ARKit session; collects mesh anchors + camera keyframes | **Does not own the `ARSession`** — only one may run at a time, `ARView.session` is read-only; attaches as delegate. Selects keyframes on ≥0.3 m or ≥15° movement (up to 50) for texture baking. Triggers UV packing + baking at finish time, then patches the MDL-written MTL to use a relative texture path so the file survives being moved to the library. |
+| `CameraKeyframe.swift` | Snapshot of one ARFrame for texture projection | Holds `CVPixelBuffer` (YCbCr, retained by strong reference), camera transform, and intrinsics. **No orientation matrix stored** — `camera.transform` is sensor-aligned regardless of interface orientation (confirmed by `DepthDeprojection` tests), so no rotation is needed before applying the intrinsics. |
+| `DepthDeprojection.swift` | Pure pinhole back-projection | The geometry most likely to be wrong (intrinsics, the ARKit −Z convention). Pulled out as a pure function and unit-tested. Also serves as the canonical reference for the projection convention used by `TextureBaker`. |
 | `DepthFrameSampler.swift` | ARFrame depth → world points | Plumbing between `ARDepthData` buffers and `DepthDeprojection`; subsamples + scales intrinsics to the depth-map resolution. |
 
 ### Reconstruction/
@@ -89,7 +96,10 @@ input*. Required outputs: textured mesh (USDZ/OBJ), raw LiDAR mesh, point cloud
 |---|---|---|
 | `ModelReconstructing.swift` | Protocol + `ReconstructionDetail`/`ReconstructionEvent` | Decouples the app from `PhotogrammetrySession.Output`; events stream to the UI; tests use a `FakeModelReconstructor`. |
 | `PhotogrammetryReconstructor.swift` | Wraps `PhotogrammetrySession` | The on-device object reconstructor. Streams progress, honors cancellation, maps SDK output to our events. |
-| `MeshBuilder.swift` | `ARMeshGeometry` → `MDLMesh` → USDZ/OBJ | The space-mode equivalent of reconstruction: bakes anchor vertices to world space and exports via Model I/O. |
+| `MeshBuilder.swift` | `ARMeshGeometry` → exploded vertex OBJ with UV | Uses **exploded vertices** (3 unique per face, no sharing) so each face can have independent UV coordinates without seam handling. Reads face indices as UInt16 or UInt32 based on `bytesPerIndex` — ARKit uses UInt16 but the field is checked rather than assumed. Exports via `MDLAsset` with a single submesh referencing the baked PNG texture. |
+| `YCbCrSampler.swift` | Sample colour from ARKit's `capturedImage` | ARKit provides `CVPixelBuffer` in `kCVPixelFormatType_420YpCbCr8BiPlanarFullRange`. Samples Y (full-res plane 0) and CbCr (half-res plane 1) with safe lock/unlock. Converts using **BT.709** coefficients — iPhone cameras output Rec.709, not BT.601; using BT.601 oversaturates red/blue. |
+| `UVAtlasPacker.swift` | Assigns each face a square atlas cell | Row-major packing; cell size auto-scales so the 2048×2048 atlas is well-utilised regardless of face count. **UV V is stored in OBJ convention (V=0 at bottom)** because SceneKit flips V on load to convert to Metal's V=0-at-top. The baker bakes in pixel/Metal convention, so the flip in the UV coords and the flip on load cancel correctly. |
+| `TextureBaker.swift` | Projects keyframes onto atlas texels | Per-texel: compute barycentric world position, find the keyframe with the best facing angle (`dot(faceNormal, toCamera)`), project via `camera.transform.inverse` + raw intrinsics (sensor-aligned, no extra rotation), sample YCbCr. Returns raw RGBA `Data`; converts to PNG via `CGContext`+`UIImage`. |
 
 ### Export/
 | File | What | Why |
@@ -101,7 +111,7 @@ input*. Required outputs: textured mesh (USDZ/OBJ), raw LiDAR mesh, point cloud
 ### Storage/
 | File | What | Why |
 |---|---|---|
-| `ScanLibrary.swift` | Adopts finished files; lists them newest-first | On-device persistence with the filesystem as source of truth; testable against a temp dir. |
+| `ScanLibrary.swift` | Adopts finished files + companions; lists primary models newest-first | On-device persistence with the filesystem as source of truth; testable against a temp dir. **Companion files** (`.mtl`, `_tex.png`) are moved alongside the primary OBJ so SceneKit can resolve both. `storedFileURLs()` filters to known `ModelFormat` extensions so companions don't appear as library items. Files are stored with their UUID-prefixed scratch name (not renamed) so OBJ/MTL/PNG stems match what the OBJ header references. |
 
 ### App/ — composition root
 | File | What | Why |
@@ -124,8 +134,8 @@ input*. Required outputs: textured mesh (USDZ/OBJ), raw LiDAR mesh, point cloud
 | `Capture/CoverageHeatmapOverlay.swift` | Sector ring + photo count | Visualizes `CaptureCoverage`; purely presentational. |
 | `Capture/ObjectCaptureFlowView.swift` | Object capture→reconstruct orchestration | Owns the concrete scanner (needed to render the view) while the VM uses the protocol. |
 | `Capture/SpaceScanFlowView.swift` | Live `ARView` mesh + finish/export | `MeshPreviewView` owns the single AR session and hands it to the scanner. |
-| `Reconstruction/ReconstructionProgressView.swift` | Progress + QuickLook result | One `QLPreviewController` bridge reused for previews. |
-| `Library/ScanLibraryView.swift` | Lists/previews saved scans | Reads from `ScanLibrary`. |
+| `Reconstruction/ReconstructionProgressView.swift` | Progress + model preview | Houses `QuickLookPreview` (USDZ/Reality via `QLPreviewController`) and `SceneKitPreview` (OBJ via `SCNView`). `ModelPreview` dispatches by file extension — QuickLook only shows interactive 3D for USDZ/Reality; OBJ needs SceneKit. |
+| `Library/ScanLibraryView.swift` | Lists/previews saved scans | Reads from `ScanLibrary`; uses `ModelPreview` for format-aware display. |
 
 ### PhotogrammetryTests/
 Named fakes (`Fakes.swift`) per CLAUDE.md (no inline stubs) + unit tests for all
@@ -138,18 +148,22 @@ here.
 
 - **Gaussian splatting** — no native Apple API; deferred. → ADR-0002.
 - **Custom SfM/MVS** — Apple's engine is better/cheaper than a phone reimpl. → ADR-0001.
-- **Photo texture projection onto space meshes** — stretch goal; space meshes
-  ship untextured for now.
+- **Occlusion testing in texture baking** — the baker picks the best facing angle
+  but does not depth-test against other geometry. Surfaces occluded by furniture
+  may sample the wrong keyframe. Fixing this requires storing the depth map per
+  keyframe and doing a reprojection depth test — deferred.
+- **Dense UV unwrapping (xatlas-style)** — no xatlas on iOS. Per-face atlas cells
+  (current approach) give 50% atlas utilisation but no seam optimisation. Could
+  be improved with a native Swift port of LSCM/ABF.
 - **Cloud sync** — explicitly out of scope this phase.
 - **A checked-in `.xcodeproj`** — generated from `source/project.yml` via XcodeGen
   to keep project config as reviewable text.
 
-## 6. Known follow-ups before first green build (on a Mac)
+## 6. Known follow-ups
 
-1. Confirm exact `ObjectCaptureSession` API surface (`Configuration.checkpointDirectory`,
-   `startDetecting/startCapturing`, `CaptureState` cases).
-2. Confirm `PhotogrammetrySession.Output` case names in the target SDK.
-3. Validate `MeshBuilder` Model I/O buffer/descriptor setup on real `ARMeshAnchor`
-   data (vertex stride, index width).
-4. Verify the single-AR-session wiring (`MeshPreviewView` → `ARSceneScanner.attach`)
-   on device.
+1. Validate `ObjectCaptureSession` API surface on device (capture→reconstruct flow).
+2. Add depth-test occlusion check in `TextureBaker` using stored keyframe depth maps.
+3. Increase atlas resolution or cell size dynamically for very large spaces (>65k faces).
+4. Consider `ARCamera.projectPoint(_:orientation:viewportSize:)` as an alternative
+   projection path if the direct intrinsics approach shows colour drift for extreme
+   off-axis views.

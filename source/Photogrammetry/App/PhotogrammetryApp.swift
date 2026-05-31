@@ -6,6 +6,11 @@ import SwiftUI
 struct PhotogrammetryApp: App {
     private let dependencies = AppDependencies.live()
 
+    init() {
+        DiagnosticLog.reset()
+        DiagnosticLog.info("log path: \(DiagnosticLog.fileURL.path)")
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView(dependencies: dependencies)

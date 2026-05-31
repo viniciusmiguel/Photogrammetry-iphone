@@ -32,8 +32,19 @@ struct SpaceScanFlowView: View {
                     .buttonStyle(.borderedProminent)
                     .padding(.bottom, 32)
             }
+        case .uploading(let fraction):
+            VStack(spacing: 16) {
+                ProgressView(value: fraction)
+                Text("Uploading… \(Int(fraction * 100))%")
+                Button("Cancel", action: viewModel.cancel)
+            }
+            .padding()
+        case .uploaded(let scanID):
+            ContentUnavailableView(
+                "Upload complete", systemImage: "checkmark.icloud",
+                description: Text("Scan ID: \(scanID)\nProcessing on the server."))
         case .saved(let mesh, _):
-            QuickLookPreview(url: mesh.url).ignoresSafeArea()
+            ModelPreview(url: mesh.url)
         case .failed(let reason):
             ContentUnavailableView(
                 "Scan failed", systemImage: "exclamationmark.triangle",
@@ -55,7 +66,9 @@ struct SpaceScanFlowView: View {
     private func begin() {
         let model = SpaceScanViewModel(
             scanner: scanner, library: dependencies.library,
-            scratchRoot: SpaceScanFlowView.scratchRoot())
+            scratchRoot: SpaceScanFlowView.scratchRoot(),
+            uploadService: dependencies.uploadService,
+            settingsStore: dependencies.settingsStore)
         model.start()
         viewModel = model
     }

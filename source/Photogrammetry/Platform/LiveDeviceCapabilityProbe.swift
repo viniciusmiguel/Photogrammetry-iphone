@@ -1,5 +1,8 @@
 import ARKit
 import RealityKit
+// ObjectCaptureSession lives in the _RealityKit_SwiftUI cross-import overlay,
+// loaded only when both RealityKit and SwiftUI are imported (iOS 26.2 SDK).
+import SwiftUI
 
 /// Production `DeviceCapabilityProbe` backed by the real Apple frameworks.
 ///
@@ -11,13 +14,19 @@ struct LiveDeviceCapabilityProbe: DeviceCapabilityProbe {
         ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
     }
 
-    var supportsObjectCapture: Bool {
-        // ObjectCaptureSession is absent from the iOS simulator SDK; it
-        // requires the physical camera stack only present on real hardware.
+    // Snapshotted at @MainActor init time (AppDependencies.live() is @MainActor),
+    // stored as a plain let so it can be read from any isolation domain. This
+    // avoids calling the @MainActor-isolated isSupported getter at each call site
+    // (iOS 26 SDK moved ObjectCaptureSession into _RealityKit_SwiftUI, which
+    // annotates isSupported as @MainActor).
+    let supportsObjectCapture: Bool
+
+    @MainActor
+    init() {
         #if !targetEnvironment(simulator)
-        ObjectCaptureSession.isSupported
+        supportsObjectCapture = ObjectCaptureSession.isSupported
         #else
-        false
+        supportsObjectCapture = false
         #endif
     }
 

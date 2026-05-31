@@ -12,6 +12,9 @@ struct RootView: View {
 
             ScanLibraryView(library: dependencies.library)
                 .tabItem { Label("Library", systemImage: "square.stack.3d.up") }
+
+            SettingsView(store: dependencies.settingsStore)
+                .tabItem { Label("Settings", systemImage: "gear") }
         }
     }
 }

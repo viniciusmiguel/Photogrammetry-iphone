@@ -1,3 +1,4 @@
+import ARKit
 import Foundation
 
 /// Live stats for the space-scan UI as the LiDAR mesh grows.
@@ -26,9 +27,24 @@ protocol SpaceScanning: AnyObject {
     /// Starts scene reconstruction (`.mesh`) + scene depth.
     func start()
 
-    /// Stops scanning and writes the reconstructed mesh (USDZ) and fused point
-    /// cloud (PLY) to `meshURL` / `pointCloudURL`.
-    func finish(meshURL: URL, pointCloudURL: URL) throws
+    /// Stops scanning, bakes a UV texture from accumulated camera keyframes,
+    /// and writes the mesh (OBJ), point cloud (PLY), and texture (PNG).
+    /// Used by the offline (on-device) path.
+    func finish(meshURL: URL, pointCloudURL: URL, textureURL: URL) throws
 
     func cancel()
+
+    // MARK: - Raw data access (server upload path)
+
+    /// Latest mesh anchors collected so far. Read at finish time to serialize
+    /// the raw scan for the server (ADR-0009).
+    var currentAnchors: [ARMeshAnchor] { get }
+    /// Camera keyframes retained for server-side texture baking.
+    var currentKeyframes: [CameraKeyframe] { get }
+    /// Accumulated depth point cloud.
+    var currentPoints: [ColoredPoint] { get }
+
+    /// Stops the AR session and accumulation without running the on-device
+    /// export. Used before serializing the raw data for upload.
+    func pause()
 }

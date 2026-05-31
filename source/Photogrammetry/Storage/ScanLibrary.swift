@@ -15,30 +15,39 @@ final class ScanLibrary {
     }
 
     /// Moves a freshly reconstructed file into the library and returns its
-    /// artifact descriptor.
+    /// artifact descriptor. Optional `companions` (e.g. MTL, PNG) are moved
+    /// into the same library folder preserving their filenames.
     func adopt(
-        fileAt source: URL, mode: ScanMode, displayName: String
+        fileAt source: URL,
+        companions: [URL] = [],
+        mode: ScanMode,
+        displayName: String
     ) throws -> ScanArtifact {
         try ensureFolder()
-        let id = UUID()
         let format = try modelFormat(for: source)
-        let destination = libraryFolder.appendingPathComponent(
-            "\(id.uuidString).\(format.fileExtension)")
+        // Preserve the source filename (already UUID-prefixed) so companion
+        // files can be resolved by their matching stem.
+        let destination = libraryFolder.appendingPathComponent(source.lastPathComponent)
         try fileManager.moveItem(at: source, to: destination)
+        for companion in companions {
+            let dest = libraryFolder.appendingPathComponent(companion.lastPathComponent)
+            try? fileManager.moveItem(at: companion, to: dest)
+        }
         return ScanArtifact(
-            id: id, mode: mode, format: format,
+            id: UUID(), mode: mode, format: format,
             url: destination, createdAt: .now, displayName: displayName)
     }
 
-    /// All model files currently in the library, newest first.
+    /// All primary model files (OBJ/USDZ/PLY) currently in the library,
+    /// newest first. Companion files (MTL, PNG) are excluded.
     func storedFileURLs() throws -> [URL] {
-        guard fileManager.fileExists(atPath: libraryFolder.path) else {
-            return []
-        }
+        guard fileManager.fileExists(atPath: libraryFolder.path) else { return [] }
+        let modelExts = Set(ModelFormat.allCases.map { $0.fileExtension })
         let keys: [URLResourceKey] = [.contentModificationDateKey]
         let contents = try fileManager.contentsOfDirectory(
             at: libraryFolder, includingPropertiesForKeys: keys)
-        return try contents.sorted(by: newerFirst)
+        let models = contents.filter { modelExts.contains($0.pathExtension.lowercased()) }
+        return try models.sorted(by: newerFirst)
     }
 
     private func newerFirst(_ lhs: URL, _ rhs: URL) throws -> Bool {

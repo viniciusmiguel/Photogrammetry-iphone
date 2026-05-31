@@ -1,3 +1,4 @@
+import ARKit
 import Foundation
 @testable import Photogrammetry
 
@@ -41,8 +42,14 @@ final class FakeSpaceScanner: SpaceScanning {
     private let continuation: AsyncStream<SpaceScanState>.Continuation
 
     private(set) var didStart = false
+    private(set) var didPause = false
     private(set) var finishedMeshURL: URL?
     var finishError: Error?
+
+    // Raw-data accessors for the upload path; tests can preset these.
+    var currentAnchors: [ARMeshAnchor] = []
+    var currentKeyframes: [CameraKeyframe] = []
+    var currentPoints: [ColoredPoint] = []
 
     init() {
         var captured: AsyncStream<SpaceScanState>.Continuation!
@@ -52,16 +59,53 @@ final class FakeSpaceScanner: SpaceScanning {
 
     func start() { didStart = true }
 
-    func finish(meshURL: URL, pointCloudURL: URL) throws {
+    func finish(meshURL: URL, pointCloudURL: URL, textureURL: URL) throws {
         if let finishError { throw finishError }
-        // Simulate writing the mesh so the library can adopt it.
-        try Data("usdz".utf8).write(to: meshURL)
+        // Simulate writing the mesh and a 1-byte texture so library.adopt succeeds.
+        try Data("obj".utf8).write(to: meshURL)
+        try Data([0]).write(to: textureURL)
         finishedMeshURL = meshURL
     }
+
+    func pause() { didPause = true }
 
     func cancel() {}
 
     func emit(_ state: SpaceScanState) { continuation.yield(state) }
+}
+
+/// Replays a fixed `UploadEvent` sequence and records which method was called.
+/// `@unchecked Sendable`: the tracking fields are touched only from the test's
+/// main thread, so no synchronization is required.
+final class FakeScanUploadService: ScanUploadService, @unchecked Sendable {
+    var spaceScanEvents: [UploadEvent] = []
+    var objectScanEvents: [UploadEvent] = []
+    private(set) var didUploadSpaceScan = false
+    private(set) var didUploadObjectScan = false
+    private(set) var lastServerURL: URL?
+
+    func uploadSpaceScan(
+        _ payload: SpaceScanPayload, serverURL: URL
+    ) -> AsyncStream<UploadEvent> {
+        didUploadSpaceScan = true
+        lastServerURL = serverURL
+        return Self.stream(spaceScanEvents)
+    }
+
+    func uploadObjectScan(
+        _ payload: ObjectScanPayload, serverURL: URL
+    ) -> AsyncStream<UploadEvent> {
+        didUploadObjectScan = true
+        lastServerURL = serverURL
+        return Self.stream(objectScanEvents)
+    }
+
+    private static func stream(_ events: [UploadEvent]) -> AsyncStream<UploadEvent> {
+        AsyncStream { continuation in
+            for event in events { continuation.yield(event) }
+            continuation.finish()
+        }
+    }
 }
 
 /// Replays a fixed event sequence, recording the inputs it was asked to process.
